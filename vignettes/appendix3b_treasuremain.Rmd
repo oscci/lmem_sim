@@ -16,7 +16,9 @@ knitr::opts_chunk$set(
 )
 ```
 
-Attempting to do this by just modifying the episode term from previous appendix3b_treasurehunt
+Attempting to do this by just modifying the episode term from previous appendix3b_treasurehunt.
+
+Succeeded with that, but then realised should be just a few changes to lines of code to make the N blocks optional, and so use same script for 2 or 4 blocks.
 
 Based on original: 'Appendix 3b: Extended Binomial Example'
 [Download the .Rmd for this example](https://github.com/debruine/lmem_sim/blob/master/vignettes/appendix3b_extended_binomial.Rmd)
@@ -34,7 +36,7 @@ The important parts of the design are:
 * Random factor 1: subjects 
 * Random factor 2: items
 * Fixed factor 1: episode (blocks B1, B2, B3 and B4)
-    * within subject: subjects tested on all 4 blocks
+    * within subject: subjects tested on all 4 blocks (or 2 blocks, now an option)
     * between item: different items used in blocks
 * Fixed factor 2: condition (level = repeated, novel)
     * within subject: subjects see both repeated and novel
@@ -102,6 +104,7 @@ However, that leads to unfeasibly large variation, both by items and subjects. I
 
 ```{r simulatedata}
 ext_bin_data <- function(
+  n_block = 4, #2 or 4 blocks
   n_subj     = 48, # number of subjects
   n_condR  = 12,  # number of items in condR per episode
   n_condN =  12,  # number of items in condN per episode
@@ -123,7 +126,7 @@ ext_bin_data <- function(
 ) {
   # simulate items;  separate item ID for each item; simulating each item's individual effect for intercept (I_0) and slope
   items <- faux::rnorm_multi(
-    n = 4*(n_condR + n_condN),
+    n = n_block*(n_condR + n_condN),
     mu = 0, 
     sd = c(item_0, item_e),
     r = item_rho,
@@ -131,7 +134,11 @@ ext_bin_data <- function(
   ) 
   items$item_id <- 1:nrow(items)
   items$category<-c(rep('R',n_condR),rep('N',n_condN))
-  items$episode<-c(rep(1,(n_condR+n_condN)),rep(2,(n_condR+n_condN)),rep(3,(n_condR+n_condN)),rep(4,(n_condR+n_condN)))
+  if(n_block==2){
+  items$episode<-c(rep(1,(n_condR+n_condN)),rep(2,(n_condR+n_condN)))}
+  if(n_block==4){
+      items$episode<-c(rep(1,(n_condR+n_condN)),rep(2,(n_condR+n_condN)),rep(3,(n_condR+n_condN)),rep(4,(n_condR+n_condN)))}
+  
   
    # simulate subjects: separate subject ID for each subject; simulating each subject's individual effect for intercept (I_0) and slope for each factor and the interaction.
   subjects <- faux::rnorm_multi(
@@ -155,7 +162,7 @@ ext_bin_data <- function(
                                   
   mydat$subj_id<-as.factor(mydat$subj_id)
   mydat$item_id <- as.factor(mydat$item_id)
-  mydat$X_e <- (((mydat$episode-1)/3)-.5)*-1 #convert to 4 equally spaced values from -.5 to .5
+  mydat$X_e <- (((mydat$episode-1)/(n_block-1))-.5)*-1 #convert to n_block equally spaced values from -.5 to .5
 
   mydat$X_c <- recode(mydat$category, "R" = -0.5, "N" = +0.5)
       # add together fixed and random effects for each effect
@@ -169,7 +176,7 @@ ext_bin_data <- function(
  mydat$Y_bin = rbinom(nrow(mydat), 1, mydat$pr) # sample from bernoulli distribution, ie use pr to set observed binary response to 0 or 1, so if pr = .5, then 0 and 1 equally likely
 
   mydat %>%  select(subj_id, item_id, episode, category, X_e, X_c, Y, Y_bin)
-return(list(mydat,n_subj, n_condR, n_condN, beta_0, beta_e, beta_c, beta_ec, item_0, item_e, item_rho, subj_0, subj_e, subj_c, subj_ec, subj_rho))
+return(list(mydat,n_block,n_subj, n_condR, n_condN, beta_0, beta_e, beta_c, beta_ec, item_0, item_e, item_rho, subj_0, subj_e, subj_c, subj_ec, subj_rho))
 }
 ```
 
@@ -293,25 +300,31 @@ sims
 ```{r runsims}
 # We now run many simulations and save to a file on each rep
 
-reps <- 12
-alln <- c(24,36,48)
-for (i in 1:length(alln)){
-n_subj <-alln[i]
-#we make a filename indicating this specific set of estimated values
-filename <- paste0("sims/binomial_4block_noitem_lm_subec01",A1B1,"_",A1B2,"_",A2B1,"_",A2B2,"_N",n_subj,"_rep",reps,".csv")
-if (!file.exists(filename)) {
-  # run simulations and save to a file
-  sims <- purrr::map_df(1:reps, ~single_run2(
-    filename = filename,
-    returndat = 0,
-    n_subj = n_subj,
-    beta_0 = b$beta_0,
-    beta_e = b$beta_e,
-    beta_c = b$beta_c,
-    beta_ec = b$beta_ec)
-  )
-}
-# read saved simulation data
+reps <- 3
+allblock <- c(2,4)
+  alln <- c(24,36,48)
+for (bl in 1:length(allblock)){
+  n_block <- allblock[bl]
+
+  for (i in 1:length(alln)){
+    n_subj <-alln[i]
+    #we make a filename indicating this specific set of estimated values
+    filename <- paste0("sims/binomial_",n_block,"block_noitem_lm_subec01",A1B1,"_",A1B2,"_",A2B1,"_",A2B2,"_N",n_subj,"_rep",reps,".csv")
+    if (!file.exists(filename)) {
+      # run simulations and save to a file
+      sims <- purrr::map_df(1:reps, ~single_run2(
+        filename = filename,
+        returndat = 0,
+        n_block = n_block,
+        n_subj = n_subj,
+        beta_0 = b$beta_0,
+        beta_e = b$beta_e,
+        beta_c = b$beta_c,
+        beta_ec = b$beta_ec)
+      )
+    }
+    # read saved simulation data
+  }
 }
 sims <- read_csv(filename)
 ```
@@ -363,38 +376,42 @@ data.frame(
 ## Power analysis
 We make a table of results saved with all the parameters.
 ```{r power}
-powersummary <- data.frame(matrix(NA,nrow=length(alln),ncol=23))
-colnames(powersummary) <- c('reps','n_subj', 'n_condR', 'n_condN', 'beta_0', 'beta_e', 'beta_c', 'beta_ec', 'item_0', 'item_e', 'item_rho', 'subj_0', 'subj_e', 'subj_c', 'subj_ec', 'subj_rho','A1B1','A1B2','A2B1','A2B2','powerC','powerE','powerCE')
-                            
-for (i in 1:length(alln)){
-n_subj <-alln[i]
-#we make a filename indicating this specific set of estimated values
-filename <- paste0("sims/binomial_4block_noitem_lm_subec01",A1B1,"_",A1B2,"_",A2B1,"_",A2B2,"_N",n_subj,"_rep",reps,".csv")
-sims <- read_csv(filename)
-# calculate mean power for specified alpha
-alpha <- 0.05
-simbit<-filter(sims,effect == "fixed")
-simbit$psig<-simbit$p.value<alpha
-psimbit<-aggregate(simbit$psig,by=list(simbit$term),FUN=mean)
-
-for (j in 1:15){
-  powersummary[i,j]<-datlist[[j]]
+powersummary <- data.frame(matrix(NA,nrow=length(alln)*length(allblock),ncol=24))
+colnames(powersummary) <- c('reps','n_block','n_subj', 'n_condR', 'n_condN', 'beta_0', 'beta_e', 'beta_c', 'beta_ec', 'item_0', 'item_e', 'item_rho', 'subj_0', 'subj_e', 'subj_c', 'subj_ec', 'subj_rho','A1B1','A1B2','A2B1','A2B2','powerC','powerE','powerCE')
+thisrow<-0
+for (bl in 1:length(allblock)){
+  n_block<- allblock[bl]
+  for (i in 1:length(alln)){
+    n_subj <-alln[i]
+    thisrow<-thisrow+1
+    #we make a filename indicating this specific set of estimated values
+    filename <- paste0("sims/binomial_",n_block,"block_noitem_lm_subec01",A1B1,"_",A1B2,"_",A2B1,"_",A2B2,"_N",n_subj,"_rep",reps,".csv")
+    sims <- read_csv(filename)
+    # calculate mean power for specified alpha
+    alpha <- 0.05
+    simbit<-filter(sims,effect == "fixed")
+    simbit$psig<-simbit$p.value<alpha
+    psimbit<-aggregate(simbit$psig,by=list(simbit$term),FUN=mean)
+    
+    for (j in 1:15){
+      powersummary[thisrow,j]<-datlist[[j]]
+    }
+    powersummary$reps[thisrow]<-reps
+    powersummary$n_subj[thisrow] <- n_subj
+    powersummary$n_block[thisrow]<-n_block
+    powersummary$subj_rho[thisrow]<-datlist[[16]][1] #just 1st value; we won't be setting this!
+    powersummary$A1B1[thisrow] <- A1B1
+    powersummary$A1B2[thisrow] <- A1B2
+    powersummary$A2B1[thisrow] <- A2B1
+    powersummary$A2B2[thisrow] <- A2B2
+    
+    powersummary$powerC[thisrow] <- round(psimbit$x[2],4)
+    powersummary$powerE[thisrow] <- round(psimbit$x[3],4)
+    powersummary$powerCE[thisrow] <- round(psimbit$x[4],4)
+    
+    # Note use of dplyr:: with the tidyverse commands group_by and summarise. This avoids problems that can arise from conflicts of these names with other packages.
+  }
 }
-powersummary$reps[i]<-reps
-powersummary$n_subj[i] <- n_subj
-powersummary$subj_rho[i]<-datlist[[16]][1] #just 1st value; we won't be setting this!
-powersummary$A1B1[i] <- A1B1
-powersummary$A1B2[i] <- A1B2
-powersummary$A2B1[i] <- A2B1
-powersummary$A2B2[i] <- A2B2
-
-powersummary$powerC[i] <- round(psimbit$x[2],4)
-powersummary$powerE[i] <- round(psimbit$x[3],4)
-powersummary$powerCE[i] <- round(psimbit$x[4],4)
-
-# Note use of dplyr:: with the tidyverse commands group_by and summarise. This avoids problems that can arise from conflicts of these names with other packages.
-}
-
 ```
 
 
