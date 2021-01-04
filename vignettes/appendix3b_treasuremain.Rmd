@@ -113,8 +113,8 @@ ext_bin_data <- function(
   item_e     =   .01, # by-item random slope for exp
   item_rho   =   0, # by-item random effect correlation
   subj_0     =   .1, # by-subject random intercept sd
-  subj_e     =   .1, # by-subject random slope sd for exp
-  subj_c     =   .1, # by-subject random slope sd for condition
+  subj_e     =   .05, # by-subject random slope sd for exp
+  subj_c     =   .05, # by-subject random slope sd for condition
   subj_ec    =   .01, # by-subject random slope sd for condition*exp
   # by-subject random effect correlations
   subj_rho   = c(0, 0, 0, # subj_0  * subj_e, subj_c, subj_ec
@@ -169,12 +169,13 @@ ext_bin_data <- function(
  mydat$Y_bin = rbinom(nrow(mydat), 1, mydat$pr) # sample from bernoulli distribution, ie use pr to set observed binary response to 0 or 1, so if pr = .5, then 0 and 1 equally likely
 
   mydat %>%  select(subj_id, item_id, episode, category, X_e, X_c, Y, Y_bin)
-
+return(list(mydat,n_subj, n_condR, n_condN, beta_0, beta_e, beta_c, beta_ec, item_0, item_e, item_rho, subj_0, subj_e, subj_c, subj_ec, subj_rho))
 }
 ```
 
 ```{r showsimdat}
-dat_sim <- ext_bin_data()
+datlist <- ext_bin_data() #modified to return all the parameters, as we need them later
+dat_sim<-datlist[[1]]
 head(dat_sim)
 #next 2 lines to check counterbalancing OK
 #table(dat_sim$category,dat_sim$item_id)
@@ -184,7 +185,7 @@ Can compare single run output with the parameters that were set.
 
 ```{r singlerun_function}
 single_run2 <- function(filename = NULL, returndat = 1,...) {
-  dat_sim <- ext_bin_data(...)
+  dat_sim <- ext_bin_data(...)[[1]]
   #original model with item_id: does not converge
 #  mod_sim <- glmer(Y_bin ~ 1 + X_e*X_c + 
 #                     (1 + X_e | item_id) + 
@@ -292,7 +293,7 @@ sims
 ```{r runsims}
 # We now run many simulations and save to a file on each rep
 
-reps <- 100
+reps <- 12
 alln <- c(24,36,48)
 for (i in 1:length(alln)){
 n_subj <-alln[i]
@@ -360,23 +361,39 @@ data.frame(
 ```
 
 ## Power analysis
-
+We make a table of results saved with all the parameters.
 ```{r power}
-
+powersummary <- data.frame(matrix(NA,nrow=length(alln),ncol=23))
+colnames(powersummary) <- c('reps','n_subj', 'n_condR', 'n_condN', 'beta_0', 'beta_e', 'beta_c', 'beta_ec', 'item_0', 'item_e', 'item_rho', 'subj_0', 'subj_e', 'subj_c', 'subj_ec', 'subj_rho','A1B1','A1B2','A2B1','A2B2','powerC','powerE','powerCE')
+                            
+for (i in 1:length(alln)){
+n_subj <-alln[i]
+#we make a filename indicating this specific set of estimated values
+filename <- paste0("sims/binomial_4block_noitem_lm_subec01",A1B1,"_",A1B2,"_",A2B1,"_",A2B2,"_N",n_subj,"_rep",reps,".csv")
+sims <- read_csv(filename)
 # calculate mean power for specified alpha
 alpha <- 0.05
-sims %>% 
-  filter(effect == "fixed") %>%
-  dplyr::group_by(term) %>%
-  dplyr::summarise(
-    mean_estimate = mean(estimate),
-    mean_se = mean(std.error),
-    power = mean(p.value < alpha),
-    .groups = "drop"
-  )
+simbit<-filter(sims,effect == "fixed")
+simbit$psig<-simbit$p.value<alpha
+psimbit<-aggregate(simbit$psig,by=list(simbit$term),FUN=mean)
+
+for (j in 1:15){
+  powersummary[i,j]<-datlist[[j]]
+}
+powersummary$reps[i]<-reps
+powersummary$n_subj[i] <- n_subj
+powersummary$subj_rho[i]<-datlist[[16]][1] #just 1st value; we won't be setting this!
+powersummary$A1B1[i] <- A1B1
+powersummary$A1B2[i] <- A1B2
+powersummary$A2B1[i] <- A2B1
+powersummary$A2B2[i] <- A2B2
+
+powersummary$powerC[i] <- round(psimbit$x[2],4)
+powersummary$powerE[i] <- round(psimbit$x[3],4)
+powersummary$powerCE[i] <- round(psimbit$x[4],4)
 
 # Note use of dplyr:: with the tidyverse commands group_by and summarise. This avoids problems that can arise from conflicts of these names with other packages.
-
+}
 
 ```
 
