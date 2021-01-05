@@ -16,9 +16,9 @@ knitr::opts_chunk$set(
 )
 ```
 
-Attempting to do this by just modifying the episode term from previous appendix3b_treasurehunt.
+Now modified so we can specify 2 or 4 blocks using common code.
 
-Succeeded with that, but then realised should be just a few changes to lines of code to make the N blocks optional, and so use same script for 2 or 4 blocks.
+Power analysis at the end stores all the parameters as well as the power.
 
 Based on original: 'Appendix 3b: Extended Binomial Example'
 [Download the .Rmd for this example](https://github.com/debruine/lmem_sim/blob/master/vignettes/appendix3b_extended_binomial.Rmd)
@@ -112,12 +112,12 @@ ext_bin_data <- function(
   beta_e     =   0, # main effect of episode
   beta_c     =   0, # main effect of condition
   beta_ec    =   0, # interaction between condition and episode
-  item_0    =   .02, # by-item random intercept sd
+  item_0    =   .01, # by-item random intercept sd
   item_e     =   .01, # by-item random slope for exp
   item_rho   =   0, # by-item random effect correlation
   subj_0     =   .1, # by-subject random intercept sd
-  subj_e     =   .05, # by-subject random slope sd for exp
-  subj_c     =   .05, # by-subject random slope sd for condition
+  subj_e     =   .01, # by-subject random slope sd for exp
+  subj_c     =   .01, # by-subject random slope sd for condition
   subj_ec    =   .01, # by-subject random slope sd for condition*exp
   # by-subject random effect correlations
   subj_rho   = c(0, 0, 0, # subj_0  * subj_e, subj_c, subj_ec
@@ -247,8 +247,8 @@ prob2param <- function(A1B1 = .5,
   ho <- logit(A2B2)
   list(
     beta_0 = mean(c(ai,ao,hi,ho)), # grand mean
-    beta_e = (ao+ai) - (ho+hi), # T1 - T2
-    beta_c = (ao+ho) - (ai+hi), # condN - condR
+    beta_e = (ao+ai)/2 - (ho+hi)/2, # T1 - T2
+    beta_c = (ao+ho)/2 - (ai+hi)/2, # condN - condR
     beta_ec = (ao-ai) - (ho-hi) # T1 o-i diff - T2 o-i diff
   )
 }
@@ -261,10 +261,10 @@ Demonstrate a single run of the function.
 
 #to check false positive rate of analysis, set all these to same value (e.g. .5)
 #I think we need just the two extremes, B1 and B4 here, since difference between them =1
-A1B1 = .55 #B1_condR
-A1B2 = .55 #B1_condN
-A2B1 = .82 #B4_condR
-A2B2 = .7 #B4_condN
+A1B1 = .65 #B1_condR
+A1B2 = .65 #B1_condN
+A2B1 = .85 #B2/4_condR
+A2B2 = .75 #B2/4_condN
 b = prob2param(A1B1, A1B2,A2B1,A2B2) 
 print('beta values are: ')
 b
@@ -300,7 +300,7 @@ sims
 ```{r runsims}
 # We now run many simulations and save to a file on each rep
 
-reps <- 3
+reps <-20
 allblock <- c(2,4)
   alln <- c(24,36,48)
 for (bl in 1:length(allblock)){
@@ -360,10 +360,10 @@ cat <- est[[2,2]]
 exp <- est[[3,2]]
 cat_exp <- est[[4,2]]
 data.frame(
-  T1_condN = inv_logit(int + .25*cat + .25*exp + .25*cat_exp),
-  T1_condR  = inv_logit(int - .25*cat + .25*exp - .25*cat_exp),
-  T2_condN = inv_logit(int + .25*cat - .25*exp - .25*cat_exp),
-  T2_condR  = inv_logit(int - .25*cat - .25*exp + .25*cat_exp)
+  T1_condN = inv_logit(int + .5*cat + .5*exp + .25*cat_exp),
+  T1_condR  = inv_logit(int - .5*cat + .5*exp - .25*cat_exp),
+  T2_condN = inv_logit(int + .5*cat - .5*exp - .25*cat_exp),
+  T2_condR  = inv_logit(int - .5*cat - .5*exp + .25*cat_exp)
 ) %>%
   gather(key, val, 1:4) %>%
   separate(key, c("exp", "cat")) %>%
@@ -393,13 +393,13 @@ for (bl in 1:length(allblock)){
     simbit$psig<-simbit$p.value<alpha
     psimbit<-aggregate(simbit$psig,by=list(simbit$term),FUN=mean)
     
-    for (j in 1:15){
+    for (j in 1:16){
       powersummary[thisrow,j]<-datlist[[j]]
     }
     powersummary$reps[thisrow]<-reps
     powersummary$n_subj[thisrow] <- n_subj
     powersummary$n_block[thisrow]<-n_block
-    powersummary$subj_rho[thisrow]<-datlist[[16]][1] #just 1st value; we won't be setting this!
+    powersummary$subj_rho[thisrow]<-datlist[[17]][1] #just 1st value; we won't be setting this!
     powersummary$A1B1[thisrow] <- A1B1
     powersummary$A1B2[thisrow] <- A1B2
     powersummary$A2B1[thisrow] <- A2B1
@@ -412,6 +412,8 @@ for (bl in 1:length(allblock)){
     # Note use of dplyr:: with the tidyverse commands group_by and summarise. This avoids problems that can arise from conflicts of these names with other packages.
   }
 }
+writefile<-paste0("sims/powersum",Sys.time(),'.csv')
+write.csv(powersummary,writefile,row.names=F)
 ```
 
 
